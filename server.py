@@ -104,41 +104,59 @@ def split_mixed_text(text):
     
     return segments
 
-def get_voice_lang(lang_code, voice):
+def get_voice_lang_and_tld(lang_code, voice=None):
     """
-    根据音色选择调整语言代码
-    gTTS支持的一些特定音色变体
+    返回标准成人播音语言代码和TLD配置
+    使用专业成人主持人音色
+    
+    参数:
+    - lang_code: 原始语言代码
+    - voice: 保留参数兼容性，但不再使用
+    
+    返回:
+    - (语言代码, TLD) 元组
     """
-    if voice == 'auto':
-        return lang_code
+    # 中文统一使用普通话，使用香港TLD获得更成人化音色
+    if lang_code in ['zh', 'zh-CN', 'zh-TW']:
+        return 'zh-CN', 'com.hk'  # 标准普通话，成人音色
     
-    # 对于中文，尝试使用不同的地区代码来获得不同音色
-    if lang_code in ['zh', 'zh-CN']:
-        if voice == 'female':
-            return 'zh-CN'  # 中文女声（默认）
-        elif voice == 'male':
-            return 'zh-TW'  # 尝试使用台湾中文获得不同音色
+    # 英文统一使用美式英语，使用澳洲TLD获得更成人化音色
+    elif lang_code in ['en', 'en-US', 'en-GB']:
+        return 'en', 'com.au'  # 标准美式英语，成人音色
     
-    # 对于英文，尝试使用不同的地区代码
-    elif lang_code in ['en', 'en-US']:
-        if voice == 'female':
-            return 'en-US'  # 美式英语女声（默认）
-        elif voice == 'male':
-            return 'en-GB'  # 英式英语（通常音色不同）
-    
-    # 其他语言或无法匹配时返回原语言代码
-    return lang_code
+    # 其他语言返回原代码，使用默认TLD
+    return lang_code, 'com'
 
-def text_to_speech(text, output_path, speed=1, voice='auto'):
+def adjust_audio_speed(audio_path, speed_factor):
+    """
+    调整音频播放速度
+    """
+    try:
+        from pydub import AudioSegment
+        audio = AudioSegment.from_mp3(str(audio_path))
+        
+        # 调整播放速度
+        if speed_factor != 1.0:
+            # 改变播放速度但保持音调
+            new_sample_rate = int(audio.frame_rate * speed_factor)
+            audio_with_new_speed = audio._spawn(audio.raw_data, overrides={"frame_rate": new_sample_rate})
+            audio_with_new_speed = audio_with_new_speed.set_frame_rate(audio.frame_rate)
+            return audio_with_new_speed
+        return audio
+    except ImportError:
+        logger.warning("pydub未安装，无法调整语速")
+        return AudioSegment.from_mp3(str(audio_path))
+
+def text_to_speech(text, output_path, speed=2):
     """
     将文本转换为语音并保存为MP3文件
     对于中英文混合文本，分别处理并合并
+    使用标准成人播音：普通话和美式英语
     
     参数:
     - text: 要合成的文本
     - output_path: 输出文件路径
-    - speed: 语速 (0=慢速, 1=正常, 2=快速)
-    - voice: 音色 (auto=智能, female=女声, male=男声)
+    - speed: 语速 (0=最慢, 1=慢速, 2=正常, 3=快速, 4=最快)
     """
     try:
         # 检测文本语言
@@ -159,13 +177,13 @@ def text_to_speech(text, output_path, speed=1, voice='auto'):
                     if seg_text.strip():  # 只处理非空片段
                         temp_file = temp_dir / f"segment_{i}.mp3"
                         
-                        # 根据音色选择调整语言代码
-                        final_lang = get_voice_lang(seg_lang, voice)
+                        # 使用标准播音语言代码和TLD
+                        final_lang, tld = get_voice_lang_and_tld(seg_lang)
                         
                         # 根据语速设置slow参数
-                        slow_mode = (speed == 0)  # 只有慢速时使用slow=True
+                        slow_mode = (speed <= 1)  # 最慢和慢速时使用slow=True
                         
-                        tts = gTTS(text=seg_text, lang=final_lang, slow=slow_mode)
+                        tts = gTTS(text=seg_text, lang=final_lang, tld=tld, slow=slow_mode)
                         tts.save(str(temp_file))
                         audio_files.append(temp_file)
                         logger.info(f"片段 {i+1} ({final_lang}): {seg_text[:20]}...")
@@ -177,6 +195,14 @@ def text_to_speech(text, output_path, speed=1, voice='auto'):
                 else:
                     # 多个文件需要合并
                     merge_audio_files(audio_files, output_path)
+                
+                # 应用语速调整
+                if speed != 2:
+                    # 5档语速映射: 0=0.5x, 1=0.7x, 2=1.0x, 3=1.3x, 4=1.6x
+                    speed_factors = [0.5, 0.7, 1.0, 1.3, 1.6]
+                    speed_factor = speed_factors[speed]
+                    adjusted_audio = adjust_audio_speed(output_path, speed_factor)
+                    adjusted_audio.export(str(output_path), format="mp3")
                 
             finally:
                 # 清理临时文件
@@ -192,14 +218,22 @@ def text_to_speech(text, output_path, speed=1, voice='auto'):
             else:
                 lang_code = lang
             
-            # 根据音色选择调整语言代码
-            final_lang = get_voice_lang(lang_code, voice)
+            # 使用标准播音语言代码和TLD
+            final_lang, tld = get_voice_lang_and_tld(lang_code)
             
             # 根据语速设置slow参数
-            slow_mode = (speed == 0)  # 只有慢速时使用slow=True
+            slow_mode = (speed <= 1)  # 最慢和慢速时使用slow=True
             
-            tts = gTTS(text=text, lang=final_lang, slow=slow_mode)
+            tts = gTTS(text=text, lang=final_lang, tld=tld, slow=slow_mode)
             tts.save(str(output_path))
+            
+            # 应用语速调整
+            if speed != 2:
+                # 5档语速映射: 0=0.5x, 1=0.7x, 2=1.0x, 3=1.3x, 4=1.6x
+                speed_factors = [0.5, 0.7, 1.0, 1.3, 1.6]
+                speed_factor = speed_factors[speed]
+                adjusted_audio = adjust_audio_speed(output_path, speed_factor)
+                adjusted_audio.export(str(output_path), format="mp3")
         
         logger.info(f"音频文件已保存: {output_path}")
         return True, None
@@ -212,17 +246,17 @@ def text_to_speech(text, output_path, speed=1, voice='auto'):
 def sanitize_filename(text):
     """
     清理文本以生成安全的文件名
-    保留中英文字符，移除或替换特殊字符
+    保留中英文字符，移除或替换特殊字符，直接去掉空格
     """
     # 移除或替换不安全的字符
     filename = re.sub(r'[<>:"/\\|?*]', '', text)  # 移除文件系统不允许的字符
-    filename = re.sub(r'[\r\n\t]', ' ', filename)  # 替换换行符和制表符为空格
-    filename = re.sub(r'\s+', ' ', filename)  # 多个空格合并为一个
-    filename = filename.strip()  # 去除首尾空格
+    filename = re.sub(r'[\r\n\t]', '', filename)  # 移除换行符和制表符
+    filename = re.sub(r'\s+', '', filename)  # 直接去掉空格
+    filename = filename.strip()  # 去除首尾空白
     
     # 限制文件名长度
     if len(filename) > 50:
-        filename = filename[:50]
+        filename = filename[:50].rstrip('_')
     
     # 如果文件名为空或只包含特殊字符，使用默认名称
     if not filename or not re.search(r'[\w\u4e00-\u9fff]', filename):
@@ -265,7 +299,7 @@ def index():
 def synthesize():
     """
     文本转语音API接口
-    支持语速和音色参数
+    支持语速参数，使用标准成人播音
     """
     try:
         # 获取请求数据
@@ -277,15 +311,12 @@ def synthesize():
         if not text:
             return jsonify({'error': '文本不能为空'}), 400
         
-        # 获取语速参数 (0=慢速, 1=正常, 2=快速)
-        speed = data.get('speed', 1)
-        if speed not in [0, 1, 2]:
-            speed = 1  # 默认正常语速
+        # 获取语速参数 (0=最慢, 1=慢速, 2=正常, 3=快速, 4=最快)
+        speed = data.get('speed', 2)
+        if speed not in [0, 1, 2, 3, 4]:
+            speed = 2  # 默认正常语速
         
-        # 获取音色参数 (auto=智能, female=女声, male=男声)
-        voice = data.get('voice', 'auto')
-        if voice not in ['auto', 'female', 'male']:
-            voice = 'auto'  # 默认智能选择
+        # 使用标准成人播音，不再需要音色参数
         
         # 生成基于文本内容的文件名
         base_filename = sanitize_filename(text)
@@ -299,10 +330,10 @@ def synthesize():
             output_path = OUTPUT_DIR / filename
             counter += 1
         
-        logger.info(f"开始合成语音: {text[:50]}... (语速:{['慢速','正常','快速'][speed]}, 音色:{voice})")
+        logger.info(f"开始合成语音: {text[:50]}... (语速:{['最慢','慢速','正常','快速','最快'][speed]}, 标准播音)")
         
         # 执行语音合成
-        success, error_msg = text_to_speech(text, output_path, speed, voice)
+        success, error_msg = text_to_speech(text, output_path, speed)
         
         if success:
             # 返回音频文件URL

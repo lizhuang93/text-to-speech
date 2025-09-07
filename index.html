@@ -143,24 +143,18 @@
             margin-top: 5px;
         }
         
-        .voice-control {
+        .voice-info {
             flex: 1;
         }
         
-        .voice-select {
-            width: 100%;
+        .voice-description {
             padding: 10px 15px;
+            background: #f8f9fa;
             border: 2px solid #e0e0e0;
             border-radius: 8px;
             font-size: 14px;
-            background: white;
-            cursor: pointer;
-            transition: border-color 0.3s;
-        }
-        
-        .voice-select:focus {
-            outline: none;
-            border-color: #667eea;
+            color: #666;
+            text-align: center;
         }
         
         .current-settings {
@@ -271,28 +265,24 @@
             <div class="control-row">
                 <div class="speed-control">
                     <div class="control-label">🎵 语速调节</div>
-                    <input type="range" id="speedSlider" class="speed-slider" min="0" max="4" step="1" value="4">
+                    <input type="range" id="speedSlider" class="speed-slider" min="0" max="4" step="1" value="2">
                     <div class="speed-labels">
+                        <span>最慢</span>
                         <span>慢速</span>
                         <span>正常</span>
                         <span>快速</span>
-                        <span>更快</span>
                         <span>最快</span>
                     </div>
                 </div>
                 
-                <div class="voice-control">
-                    <div class="control-label">🎤 音色选择</div>
-                    <select id="voiceSelect" class="voice-select">
-                        <option value="auto">🤖 智能选择</option>
-                        <option value="female">👩 女声</option>
-                        <option value="male">👨 男声</option>
-                    </select>
+                <div class="voice-info">
+                    <div class="control-label">🎤 音色</div>
+                    <div class="voice-description">标准成人播音（普通话 + 美式英语）</div>
                 </div>
             </div>
             
             <div class="current-settings" id="currentSettings">
-                当前设置：正常语速 | 智能音色
+                当前设置：正常语速 | 标准播音
             </div>
         </div>
         
@@ -321,7 +311,6 @@
             const textInput = document.getElementById('textInput');
             const text = textInput.value.trim();
             const speedSlider = document.getElementById('speedSlider');
-            const voiceSelect = document.getElementById('voiceSelect');
             
             if (!text) {
                 showError('请输入要合成的文本');
@@ -330,7 +319,6 @@
             
             // 获取当前设置
             const speed = parseInt(speedSlider.value);
-            const voice = voiceSelect.value;
             
             // 显示加载状态
             showLoading(true);
@@ -344,8 +332,7 @@
                     },
                     body: JSON.stringify({ 
                         text: text,
-                        speed: speed,
-                        voice: voice
+                        speed: speed
                     })
                 });
                 
@@ -412,28 +399,18 @@
             updateCurrentSettings();
         });
         
-        // 音色选择事件监听
-        document.getElementById('voiceSelect').addEventListener('change', function() {
-            updateCurrentSettings();
-        });
+        // 初始化设置显示
+        updateCurrentSettings();
         
         // 更新当前设置显示
         function updateCurrentSettings() {
             const speedSlider = document.getElementById('speedSlider');
-            const voiceSelect = document.getElementById('voiceSelect');
             const currentSettings = document.getElementById('currentSettings');
             
-            const speedTexts = ['慢速', '正常', '快速', '更快', '最快'];
-            const voiceTexts = {
-                'auto': '智能音色',
-                'female': '女声',
-                'male': '男声'
-            };
-            
+            const speedTexts = ['最慢', '慢速', '正常', '快速', '最快'];
             const speedText = speedTexts[parseInt(speedSlider.value)];
-            const voiceText = voiceTexts[voiceSelect.value];
             
-            currentSettings.textContent = `当前设置：${speedText} | ${voiceText}`;
+            currentSettings.textContent = `当前设置：${speedText} | 标准播音`;
         }
     </script>
 </body>
