@@ -41,11 +41,47 @@
             margin-bottom: 30px;
         }
         
+        .controls-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .control-group {
+            margin-bottom: 20px;
+        }
+        
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+        
+        .control-row {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        
+        @media (max-width: 600px) {
+            .control-row {
+                flex-direction: column;
+                gap: 15px;
+                align-items: stretch;
+            }
+        }
+        
         label {
             display: block;
             margin-bottom: 10px;
             color: #555;
             font-weight: bold;
+        }
+        
+        .control-label {
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #666;
         }
         
         textarea {
@@ -62,6 +98,80 @@
         textarea:focus {
             outline: none;
             border-color: #667eea;
+        }
+        
+        .speed-control {
+            flex: 1;
+        }
+        
+        .speed-slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+            margin: 10px 0;
+        }
+        
+        .speed-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .speed-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .speed-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #888;
+            margin-top: 5px;
+        }
+        
+        .voice-control {
+            flex: 1;
+        }
+        
+        .voice-select {
+            width: 100%;
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        
+        .voice-select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .current-settings {
+            text-align: center;
+            font-size: 13px;
+            color: #666;
+            margin-top: 10px;
+            padding: 8px;
+            background: #fff;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
         }
         
         .button-section {
@@ -157,6 +267,35 @@
             <textarea id="textInput" placeholder="支持中文、英文或中英文混合输入，例如：hello你好"></textarea>
         </div>
         
+        <div class="controls-section">
+            <div class="control-row">
+                <div class="speed-control">
+                    <div class="control-label">🎵 语速调节</div>
+                    <input type="range" id="speedSlider" class="speed-slider" min="0" max="4" step="1" value="4">
+                    <div class="speed-labels">
+                        <span>慢速</span>
+                        <span>正常</span>
+                        <span>快速</span>
+                        <span>更快</span>
+                        <span>最快</span>
+                    </div>
+                </div>
+                
+                <div class="voice-control">
+                    <div class="control-label">🎤 音色选择</div>
+                    <select id="voiceSelect" class="voice-select">
+                        <option value="auto">🤖 智能选择</option>
+                        <option value="female">👩 女声</option>
+                        <option value="male">👨 男声</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="current-settings" id="currentSettings">
+                当前设置：正常语速 | 智能音色
+            </div>
+        </div>
+        
         <div class="button-section">
             <button id="synthesizeBtn" onclick="synthesizeSpeech()">🎵 合成语音</button>
         </div>
@@ -181,11 +320,17 @@
         async function synthesizeSpeech() {
             const textInput = document.getElementById('textInput');
             const text = textInput.value.trim();
+            const speedSlider = document.getElementById('speedSlider');
+            const voiceSelect = document.getElementById('voiceSelect');
             
             if (!text) {
                 showError('请输入要合成的文本');
                 return;
             }
+            
+            // 获取当前设置
+            const speed = parseInt(speedSlider.value);
+            const voice = voiceSelect.value;
             
             // 显示加载状态
             showLoading(true);
@@ -197,7 +342,11 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ text: text })
+                    body: JSON.stringify({ 
+                        text: text,
+                        speed: speed,
+                        voice: voice
+                    })
                 });
                 
                 const data = await response.json();
@@ -250,13 +399,42 @@
             document.getElementById('success').style.display = 'none';
         }
         
-        // 回车键触发合成
+        // 添加回车键监听
         document.getElementById('textInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 synthesizeSpeech();
             }
         });
+        
+        // 语速滑块事件监听
+        document.getElementById('speedSlider').addEventListener('input', function() {
+            updateCurrentSettings();
+        });
+        
+        // 音色选择事件监听
+        document.getElementById('voiceSelect').addEventListener('change', function() {
+            updateCurrentSettings();
+        });
+        
+        // 更新当前设置显示
+        function updateCurrentSettings() {
+            const speedSlider = document.getElementById('speedSlider');
+            const voiceSelect = document.getElementById('voiceSelect');
+            const currentSettings = document.getElementById('currentSettings');
+            
+            const speedTexts = ['慢速', '正常', '快速', '更快', '最快'];
+            const voiceTexts = {
+                'auto': '智能音色',
+                'female': '女声',
+                'male': '男声'
+            };
+            
+            const speedText = speedTexts[parseInt(speedSlider.value)];
+            const voiceText = voiceTexts[voiceSelect.value];
+            
+            currentSettings.textContent = `当前设置：${speedText} | ${voiceText}`;
+        }
     </script>
 </body>
 </html>

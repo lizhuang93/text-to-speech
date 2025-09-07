@@ -104,10 +104,41 @@ def split_mixed_text(text):
     
     return segments
 
-def text_to_speech(text, output_path):
+def get_voice_lang(lang_code, voice):
+    """
+    根据音色选择调整语言代码
+    gTTS支持的一些特定音色变体
+    """
+    if voice == 'auto':
+        return lang_code
+    
+    # 对于中文，尝试使用不同的地区代码来获得不同音色
+    if lang_code in ['zh', 'zh-CN']:
+        if voice == 'female':
+            return 'zh-CN'  # 中文女声（默认）
+        elif voice == 'male':
+            return 'zh-TW'  # 尝试使用台湾中文获得不同音色
+    
+    # 对于英文，尝试使用不同的地区代码
+    elif lang_code in ['en', 'en-US']:
+        if voice == 'female':
+            return 'en-US'  # 美式英语女声（默认）
+        elif voice == 'male':
+            return 'en-GB'  # 英式英语（通常音色不同）
+    
+    # 其他语言或无法匹配时返回原语言代码
+    return lang_code
+
+def text_to_speech(text, output_path, speed=1, voice='auto'):
     """
     将文本转换为语音并保存为MP3文件
     对于中英文混合文本，分别处理并合并
+    
+    参数:
+    - text: 要合成的文本
+    - output_path: 输出文件路径
+    - speed: 语速 (0=慢速, 1=正常, 2=快速)
+    - voice: 音色 (auto=智能, female=女声, male=男声)
     """
     try:
         # 检测文本语言
@@ -127,10 +158,17 @@ def text_to_speech(text, output_path):
                 for i, (seg_lang, seg_text) in enumerate(segments):
                     if seg_text.strip():  # 只处理非空片段
                         temp_file = temp_dir / f"segment_{i}.mp3"
-                        tts = gTTS(text=seg_text, lang=seg_lang, slow=False)
+                        
+                        # 根据音色选择调整语言代码
+                        final_lang = get_voice_lang(seg_lang, voice)
+                        
+                        # 根据语速设置slow参数
+                        slow_mode = (speed == 0)  # 只有慢速时使用slow=True
+                        
+                        tts = gTTS(text=seg_text, lang=final_lang, slow=slow_mode)
                         tts.save(str(temp_file))
                         audio_files.append(temp_file)
-                        logger.info(f"片段 {i+1} ({seg_lang}): {seg_text[:20]}...")
+                        logger.info(f"片段 {i+1} ({final_lang}): {seg_text[:20]}...")
                 
                 # 合并音频文件
                 if len(audio_files) == 1:
@@ -154,7 +192,13 @@ def text_to_speech(text, output_path):
             else:
                 lang_code = lang
             
-            tts = gTTS(text=text, lang=lang_code, slow=False)
+            # 根据音色选择调整语言代码
+            final_lang = get_voice_lang(lang_code, voice)
+            
+            # 根据语速设置slow参数
+            slow_mode = (speed == 0)  # 只有慢速时使用slow=True
+            
+            tts = gTTS(text=text, lang=final_lang, slow=slow_mode)
             tts.save(str(output_path))
         
         logger.info(f"音频文件已保存: {output_path}")
@@ -221,6 +265,7 @@ def index():
 def synthesize():
     """
     文本转语音API接口
+    支持语速和音色参数
     """
     try:
         # 获取请求数据
@@ -231,6 +276,16 @@ def synthesize():
         text = data['text'].strip()
         if not text:
             return jsonify({'error': '文本不能为空'}), 400
+        
+        # 获取语速参数 (0=慢速, 1=正常, 2=快速)
+        speed = data.get('speed', 1)
+        if speed not in [0, 1, 2]:
+            speed = 1  # 默认正常语速
+        
+        # 获取音色参数 (auto=智能, female=女声, male=男声)
+        voice = data.get('voice', 'auto')
+        if voice not in ['auto', 'female', 'male']:
+            voice = 'auto'  # 默认智能选择
         
         # 生成基于文本内容的文件名
         base_filename = sanitize_filename(text)
@@ -244,10 +299,10 @@ def synthesize():
             output_path = OUTPUT_DIR / filename
             counter += 1
         
-        logger.info(f"开始合成语音: {text[:50]}...")
+        logger.info(f"开始合成语音: {text[:50]}... (语速:{['慢速','正常','快速'][speed]}, 音色:{voice})")
         
         # 执行语音合成
-        success, error_msg = text_to_speech(text, output_path)
+        success, error_msg = text_to_speech(text, output_path, speed, voice)
         
         if success:
             # 返回音频文件URL
